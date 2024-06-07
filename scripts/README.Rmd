@@ -1,0 +1,7 @@
+---
+title: 'Analysis scripts'
+output: github_document
+bibliography: ../bib-files/references.bib
+csl: ../apa.csl
+link-citations: true
+---

@@ -1,0 +1,42 @@
+
+---
+bibliography: ../bib-files/references.bib
+csl: ../apa.csl
+format:
+  docx:
+    reference-doc: reference-doc.docx
+    toc: true
+    toc-location: left
+    toc-title: Table of Contents
+output:
+  officedown::rdocx_document:
+    page_margins:
+      bottom: 1
+      footer: 0
+      gutter: 0
+      header: 0.5
+      left: 1
+      right: 1
+      top: 1
+    plots:
+      align: center
+      caption:
+        pre: 'Figure '
+        sep: '. '
+        style: Image Caption
+    tables:
+      caption:
+        pre: 'Table '
+        sep: '. '
+        style: Table Caption
+  pdf_document: default
+  word_document: default
+editor:
+  markdown:
+    wrap: sentence
+---
+
+These are the supplemental materials.
+
+## References
+  
