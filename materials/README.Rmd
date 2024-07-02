@@ -1,7 +1,0 @@
----
-title: 'Materials'
-output: github_document
-bibliography: bib-files/references.bib
-csl: bib-files/apa.csl
-link-citations: true
----
