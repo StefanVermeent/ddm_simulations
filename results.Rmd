@@ -1,0 +1,205 @@
+---
+title: "Simulation Results"
+output: html_notebook
+---
+
+```{r include = FALSE}
+library(tidyverse)
+
+load('analysis_objects/ddm_msit_mod1_results.RData')
+load('analysis_objects/ddm_fm_mod1_results.RData')
+load('analysis_objects/ddm_fm_mod2_results.RData')
+```
+
+# General approach
+
+ I take the following six steps for the simulation analyses:
+
+1. Based on observed mean RTs, accuracy rates, and correlations between task conditions, simulate 10,000 trials per participant following a Gamma distribution (to get the signature right-skewed RT distributions).
+2. Estimate DDM parameters based on simulated trials (which will be highly reliable because of the large number of trials).
+3. For each DDM parameter, calculate the mean and SD, and use these to simulate *ground-truth* DDM parameters for individual participants
+4. Simulate RTs/accuracies based on *ground-truth* DDM parameters, with the same number of trials as the original study
+5. Apply Hierarchical Bayesian DDM to the simulated RTs/accuracies
+6. Compare estimated DDM parameters with simulated *ground-truth* DDM parameters, under different conditions (e.g., different model specifications)
+
+For each task, I simulated two scenarios using the number of trials in the mixed block and using the same number of participants as in the real dataset.
+In simulation 1, a single boundary separation (response caution) is estimated across conditions (i.e., assuming children have the same response caution on congruent and incongruent trials).
+It would be theoretically reasonable to constrain boundary separation this way, because the different trial types are intermixed randomly, with no advance cue of whether the current trial is going to be congruent or incongruent.
+Therefore, children have little time to adjust their speed-accuracy trade-off accordingly.
+A practical advantage is that it reduces the number of parameters to be estimated, which generally improve model fit.
+Nevertheless, I also looked into model performance when all three parameters are freely estimated in each condition (see simulation 2).
+Drift rate and non-decision time were always estimated separately for congruent and incongruent condition.
+
+For each simulation, I present two Figures.
+The first figure shows model convergence (i.e., whether the model was able to converge on a stable solution).
+In the case of good model convergence, the plots should resemble a "thick, hairy catterpillar". 
+This is the case for all the simulations presented here.
+The second figure shows parameter recovery (i.e., how closely the estimated DDM parameters resemble the "true", underlying DDM parameters).
+Because the data are simulated, we actually know the groundtruth DDM parameters.
+Higher correlations indicate better parameter recovery.
+
+# Flanker
+
+## Simulation 1: Constrain boundary separation across conditions
+
+For simulation 1, I simulated 29 congruent and 16 incongruent trials.
+This corresponds with the number of trials in mixed blocks, averaged across blue and pink trials.
+Drift rate and non-decision time were estimated separately for congruent and incongruent condition, but boundary separation was fit across both conditions.
+
+
+The HDDM model converged normally (plots should resemble a "thick, hairy catterpillar"):
+
+```{r, echo = FALSE}
+ddm_fm_traces_mod1 |> 
+  rename(
+    `Boundary sep`       = muAlpha,
+    `Non-dec time (con)` = `muTau[1]`,
+    `Non-dec time (inc)` = `muTau[2]`,
+    `Drift rate (con)`   = `muDelta[1]`,
+    `Drift rate (inc)`   = `muDelta[2]`
+  ) |> 
+  pivot_longer(-c(n, chains), names_to = "parameter", values_to = "value") |> 
+  ggplot(aes(n, value, color = factor(chains), group = factor(chains))) + 
+  geom_line() +
+  facet_wrap(~parameter, scales = 'free') +
+  theme_classic()
+
+```
+
+Parameter recovery was excellent for most parameters.
+Recovery of incongruent non-decision times was slightly lower, but still reasonably high.
+
+
+```{r echo = FALSE}
+ddm_fm_data_mod1 |> 
+  group_by(condition, parameter) |> 
+  mutate(
+    r = round(cor(estimated, groundtruth),2),
+    x = (max(estimated)-abs(min(estimated)))/2,
+    max_y = max(groundtruth)
+    ) |> 
+  mutate(
+    parameter = case_when(
+     parameter == 'a' ~ "Boundary sep",
+     parameter == 'v' ~ "Drift rate",
+     parameter == 't0' ~ "Non-dec time"
+    ),
+    condition = ifelse(is.na(condition), "", condition)
+  ) |> 
+  unite("parameter", c(parameter, condition), sep = " ") |> 
+  ungroup() |> 
+  ggplot(aes(estimated, groundtruth, color = parameter)) +
+  geom_point() +
+  geom_text(aes(x = x, y = max_y, label = paste0("r = ", r)), color = 'black', check_overlap = TRUE) +
+  geom_abline(aes(slope = 1, intercept = 0)) +
+  facet_wrap(~parameter, scales = 'free') +
+  guides(color = 'none') +
+  theme_classic()
+```
+
+## Simulation 2: Boundary separation estimated freely for each condition
+
+Like simulation 1, I simulated 29 congruent and 16 incongruent trials.
+
+The HDDM model converged normally:
+
+```{r, echo = FALSE}
+ddm_fm_traces_mod2 |> 
+  rename(
+    `Boundary sep (con)` = `muAlpha[1]`,
+    `Boundary sep (inc)` = `muAlpha[2]`,
+    `Non-dec time (con)` = `muTau[1]`,
+    `Non-dec time (inc)` = `muTau[2]`,
+    `Drift rate (con)`   = `muDelta[1]`,
+    `Drift rate (inc)`   = `muDelta[2]`
+  ) |> 
+  pivot_longer(-c(n, chains), names_to = "parameter", values_to = "value") |> 
+  ggplot(aes(n, value, color = factor(chains), group = factor(chains))) + 
+  geom_line() +
+  facet_wrap(~parameter, scales = 'free') +
+  theme_classic()
+```
+
+Drift rates and boundary separations were still recovered with high accuracy.
+Recovery of non-decision time was comparatively lower, but still reasonable.
+
+
+```{r echo = FALSE}
+ddm_fm_data_mod2 |> 
+  group_by(condition, parameter) |> 
+  mutate(
+    r = round(cor(estimated, groundtruth),2),
+    x = (max(estimated)-abs(min(estimated)))/2,
+    max_y = max(groundtruth)
+    ) |> 
+  mutate(
+    parameter = case_when(
+     parameter == 'a' ~ "Boundary sep",
+     parameter == 'v' ~ "Drift rate",
+     parameter == 't0' ~ "Non-dec time"
+    ),
+    condition = ifelse(is.na(condition), "", condition)
+  ) |> 
+  unite("parameter", c(parameter, condition), sep = " ") |> 
+  ungroup() |> 
+  ggplot(aes(estimated, groundtruth, color = parameter)) +
+  geom_point() +
+  geom_text(aes(x = x, y = max_y, label = paste0("r = ", r)), color = 'black', check_overlap = TRUE) +
+  geom_abline(aes(slope = 1, intercept = 0)) +
+  facet_wrap(~parameter, scales = 'free') +
+  guides(color = 'none') +
+  theme_classic()
+```
+
+# MSIT
+
+For the MSIT, I simulated 24 congruent and 24 incongruent trials.
+The model converged normally.
+
+```{r echo = FALSE}
+ddm_msit_traces_mod1 |> 
+  rename(
+    `Boundary sep`       = muAlpha,
+    `Non-dec time (con)` = `muTau[1]`,
+    `Non-dec time (inc)` = `muTau[2]`,
+    `Drift rate (con)`   = `muDelta[1]`,
+    `Drift rate (inc)`   = `muDelta[2]`
+  ) |> 
+  pivot_longer(-c(n, chains), names_to = "parameter", values_to = "value") |> 
+  ggplot(aes(n, value, color = factor(chains), group = factor(chains))) + 
+  geom_line() +
+  facet_wrap(~parameter, scales = 'free') +
+  theme_classic()
+
+```
+
+Just like with the Flanker, drift rates and boundary separation were recovered with high accuracy, while the recovery of the non-decision time (for congruent trials) was quite low.
+
+
+```{r echo = FALSE}
+ddm_msit_data_mod1 |> 
+  group_by(condition, parameter) |> 
+  mutate(
+    r = round(cor(estimated, groundtruth),2),
+    x = (max(estimated)-abs(min(estimated)))/2,
+    max_y = max(groundtruth)
+    ) |> 
+  mutate(
+    parameter = case_when(
+     parameter == 'a' ~ "Boundary sep",
+     parameter == 'v' ~ "Drift rate",
+     parameter == 't0' ~ "Non-dec time"
+    ),
+    condition = ifelse(is.na(condition), "", condition)
+  ) |> 
+  unite("parameter", c(parameter, condition), sep = " ") |> 
+  ungroup() |> 
+  ggplot(aes(estimated, groundtruth, color = parameter)) +
+  geom_point() +
+  geom_abline(aes(slope = 1, intercept = 0)) +
+  geom_text(aes(x = x, y = max_y, label = paste0("r = ", r)), color = 'black', check_overlap = TRUE) +
+  facet_wrap(~parameter, scales = 'free') +
+  guides(color = 'none') +
+  theme_classic()
+```
+

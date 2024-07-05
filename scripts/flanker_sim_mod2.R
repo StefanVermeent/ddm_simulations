@@ -90,23 +90,25 @@ sim_fm_raw <-
     trial_rts = pmap(list(id, rt_con_m, rt_con_sd, rt_inc_m, rt_inc_sd, acc_con_m, acc_inc_m, rate_con, shape_con, rate_inc, shape_inc), function(id, rt_con_m, rt_con_sd, rt_inc_m, rt_inc_sd, acc_con_m, acc_inc_m, rate_con, shape_con, rate_inc, shape_inc) {
 
       bind_rows(
-        con_trials <- rgamma(n = nobs, shape = shape_con, rate = rate_con) |>
+        con_trials <- rgamma(n = 1000, shape = shape_con, rate = rate_con) |>
           as_tibble() |>
           rename(rt = value) |>
+          filter(rt > 0.2) |>
           mutate(
             id = id,
             condition = "congruent",
-            acc = sample(x = c(0,1), size = nobs, prob = c(1-acc_con_m, acc_con_m), replace = TRUE),
+            acc = sample(x = c(0,1), size = n(), prob = c(1-acc_con_m, acc_con_m), replace = TRUE),
             rt_con_m = rt_con_m,
             rt_con_sd = rt_con_sd
           ),
         inc_trials <- rgamma(n = 1000, shape = shape_inc, rate = rate_inc) |>
           as_tibble() |>
           rename(rt = value) |>
+          filter(rt > 0.2) |>
           mutate(
             id = id,
             condition = "incongruent",
-            acc = sample(x = c(0,1), size = 1000, prob = c(1-acc_inc_m, acc_inc_m), replace = TRUE),
+            acc = sample(x = c(0,1), size = n(), prob = c(1-acc_inc_m, acc_inc_m), replace = TRUE),
             rt_inc_m = rt_inc_m,
             rt_inc_sd = rt_inc_sd
           )
@@ -133,7 +135,7 @@ fast_dm_settings(task = "flanker",
                  path = "data/flanker",
                  model_version = "_mod2",
                  method = "ml",
-                 depend = c("depends v condition", "depends t0 condition"),
+                 depend = c("depends v condition", "depends a condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 
 # Compute DDM parameters
@@ -144,12 +146,14 @@ execute_fast_dm(task = "flanker", path = "data/flanker", model_version = "_mod2"
 # Read DDM results
 sim_fm_ddm <- read_DDM(task = "flanker", path = "data/flanker", model_version = "_mod2") |>
   summarise(
-    v_con_m = mean(v_congruent),
-    v_con_sd = sd(v_congruent),
-    v_inc_m = mean(v_incongruent),
-    v_inc_sd = sd(v_incongruent),
-    a_m      = mean(a),
-    a_sd     = sd(a),
+    v_con_m   = mean(v_congruent),
+    v_con_sd  = sd(v_congruent),
+    v_inc_m   = mean(v_incongruent),
+    v_inc_sd  = sd(v_incongruent),
+    a_con_m   = mean(a_congruent),
+    a_con_sd  = sd(a_congruent),
+    a_inc_m   = mean(a_incongruent),
+    a_inc_sd  = sd(a_incongruent),
     t0_con_m  = mean(t0_congruent),
     t0_con_sd = sd(t0_congruent),
     t0_inc_m  = mean(t0_incongruent),
@@ -167,12 +171,13 @@ fm_ddm_gt <-
     ntrials_inc = ntrials_fm_inc,
     v_con_gt    = rnorm(2000, mean = sim_fm_ddm$v_con_m, sd = sim_fm_ddm$v_con_sd),
     v_inc_gt    = rnorm(2000, mean = sim_fm_ddm$v_inc_m, sd = sim_fm_ddm$v_inc_sd),
-    a_gt        = rnorm(2000, mean = sim_fm_ddm$a_m, sd = sim_fm_ddm$a_sd),
+    a_con_gt    = rnorm(2000, mean = sim_fm_ddm$a_con_m, sd = sim_fm_ddm$a_con_sd),
+    a_inc_gt    = rnorm(2000, mean = sim_fm_ddm$a_inc_m, sd = sim_fm_ddm$a_inc_sd),
     t0_con_gt   = rnorm(2000, mean = sim_fm_ddm$t0_con_m, sd = sim_fm_ddm$t0_con_sd),
     t0_inc_gt   = rnorm(2000, mean = sim_fm_ddm$t0_inc_m, sd = sim_fm_ddm$t0_inc_sd),
   ) |>
   # Remove very small non-decision times because the cause issues with fitting the model (and are biologically not very plausible)
-  filter(a_gt > 0 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
+  filter(a_con_gt > 0.2 & a_inc_gt > 0.2 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
   mutate(id = 1:n()) |>
   filter(id %in% sample(1:n(), size = nobs)) |>
   mutate(id = 1:nobs)
@@ -185,17 +190,17 @@ future::plan(future::multisession, workers = ncores)
 
 fm_ddm_rt <- fm_ddm_gt %>%
   mutate(
-    responses = furrr::future_pmap(., function(id, ntrials_con, ntrials_inc, v_con_gt, v_inc_gt, a_gt, t0_con_gt, t0_inc_gt) {
+    responses = furrr::future_pmap(., function(id, ntrials_con, ntrials_inc, v_con_gt, v_inc_gt, a_con_gt, a_inc_gt, t0_con_gt, t0_inc_gt) {
 
       bind_rows(
         # Simulate RTs/accuracy for congruent condition
-        RWiener::rwiener(n=ntrials_con, alpha = a_gt, tau = t0_con_gt, beta = 0.5, delta = v_con_gt) |>
+        RWiener::rwiener(n=ntrials_con, alpha = a_con_gt, tau = t0_con_gt, beta = 0.5, delta = v_con_gt) |>
           as_tibble() |>
           mutate(
             con = 'congruent'
           ),
         # Simulate RTs/accuracy for incongruent condition
-        RWiener::rwiener(n = ntrials_inc, alpha = a_gt, tau = t0_inc_gt, beta = 0.5, delta = v_inc_gt) |>
+        RWiener::rwiener(n = ntrials_inc, alpha = a_inc_gt, tau = t0_inc_gt, beta = 0.5, delta = v_inc_gt) |>
           as_tibble() |>
           mutate(
             con = 'incongruent'
@@ -221,7 +226,7 @@ future::plan(future::sequential)
 model_fm <- "model {
   #likelihood function
   for (t in 1:nTrials) {
-    y[t] ~ dwiener(alpha[subject[t]],
+    y[t] ~ dwiener(alpha[condition[t], subject[t]],
                    tau[condition[t], subject[t]],
                    0.5,
                    delta[condition[t], subject[t]])
@@ -231,16 +236,18 @@ model_fm <- "model {
     for (c in 1:nCon) {
       tau[c, s]  ~ dnorm(muTau[c], precTau) T(.0001, 1)
       delta[c, s] ~ dnorm(muDelta[c] , precDelta) T(-10, 10)
+      alpha[c, s]  ~ dnorm(muAlpha[c], precAlpha) T(.05, 10)
     }
-    alpha[s]  ~ dnorm(muAlpha, precAlpha) T(.1, 5)
+
   }
 
   #priors
   for (c in 1:nCon){
     muTau[c] ~ dunif(.0001, 1)
     muDelta[c] ~ dunif(-10, 10)
+    muAlpha[c] ~ dunif(.05, 10)
   }
-  muAlpha~ dunif(.1, 5)
+
 
   precAlpha  ~ dgamma(.001, .001)
   precTau ~ dgamma(.001, .001)
@@ -280,7 +287,7 @@ datalist_fm <- list(y = y_fm, condition = condition_fm,
 #This function choses initial values randomly
 initfunction <- function(chain){
   return(list(
-    muAlpha = runif(1, .2, 4.9),
+    muAlpha = runif(2, .06, 9.95),
     muTau = runif(2, .01, .05),
     muDelta = runif(2, -9.9, 9.9),
     precAlpha = runif(1, .01, 100),
@@ -342,7 +349,7 @@ ddm_fm_data_mod2 <- mcmc_fm |>
   separate(col = parameter, into = c('parameter', 'id'), sep = "\\[") |>
   mutate(
     id = str_remove(id, pattern = "\\]$"),
-    id = ifelse(parameter %in% c('delta', 'tau'),
+    id = ifelse(parameter %in% c('delta', 'tau', 'alpha'),
                 str_replace_all(id, "([0-9]*),([0-9]*)", "\\2,\\1"),
                 id
     )

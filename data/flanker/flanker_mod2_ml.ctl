@@ -7,6 +7,7 @@ set sv 0
 set st0 0
 set p 0
  depends v condition
+depends a condition
 depends t0 condition
 format TIME RESPONSE condition
  load *.dat

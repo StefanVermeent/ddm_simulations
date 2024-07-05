@@ -78,23 +78,25 @@ sim_msit_raw <-
     trial_rts = pmap(list(id, rt_con_m, rt_con_sd, rt_inc_m, rt_inc_sd, acc_con_m, acc_inc_m, rate_con, shape_con, rate_inc, shape_inc), function(id, rt_con_m, rt_con_sd, rt_inc_m, rt_inc_sd, acc_con_m, acc_inc_m, rate_con, shape_con, rate_inc, shape_inc) {
 
       bind_rows(
-        con_trials <- rgamma(n = nobs, shape = shape_con, rate = rate_con) |>
+        con_trials <- rgamma(n = 1000, shape = shape_con, rate = rate_con) |>
           as_tibble() |>
           rename(rt = value) |>
+          filter(rt > 0.2) |>
           mutate(
             id = id,
             condition = "congruent",
-            acc = sample(x = c(0,1), size = nobs, prob = c(1-acc_con_m, acc_con_m), replace = TRUE),
+            acc = sample(x = c(0,1), size = n(), prob = c(1-acc_con_m, acc_con_m), replace = TRUE),
             rt_con_m = rt_con_m,
             rt_con_sd = rt_con_sd
           ),
         inc_trials <- rgamma(n = 1000, shape = shape_inc, rate = rate_inc) |>
           as_tibble() |>
           rename(rt = value) |>
+          filter(rt > 0.2) |>
           mutate(
             id = id,
             condition = "incongruent",
-            acc = sample(x = c(0,1), size = 1000, prob = c(1-acc_inc_m, acc_inc_m), replace = TRUE),
+            acc = sample(x = c(0,1), size = n(), prob = c(1-acc_inc_m, acc_inc_m), replace = TRUE),
             rt_inc_m = rt_inc_m,
             rt_inc_sd = rt_inc_sd
           )
@@ -119,25 +121,27 @@ write_DDM_files(data = sim_msit_ddm, path = "data/msit", vars = c("rt", "correct
 
 fast_dm_settings(task = "msit",
                  path = "data/msit",
-                 model_version = "_mod1",
+                 model_version = "_mod2",
                  method = "ml",
-                 depend = c("depends v condition", "depends t0 condition"),
+                 depend = c("depends v condition", "depends a condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 
 # Compute DDM parameters
-execute_fast_dm(task = "msit", path = "data/msit", model_version = "_mod1")
+execute_fast_dm(task = "msit", path = "data/msit", model_version = "_mod2")
 
 
 
 # Read DDM results
-sim_msit_ddm <- read_DDM(task = "msit", model_version = "_mod1") |>
+sim_msit_ddm <- read_DDM(task = "msit", path = "data/msit", model_version = "_mod2") |>
   summarise(
-    v_con_m = mean(v_congruent),
-    v_con_sd = sd(v_congruent),
-    v_inc_m = mean(v_incongruent),
-    v_inc_sd = sd(v_incongruent),
-    a_m      = mean(a),
-    a_sd     = sd(a),
+    v_con_m   = mean(v_congruent),
+    v_con_sd  = sd(v_congruent),
+    v_inc_m   = mean(v_incongruent),
+    v_inc_sd  = sd(v_incongruent),
+    a_con_m   = mean(a_congruent),
+    a_con_sd  = sd(a_congruent),
+    a_inc_m   = mean(a_incongruent),
+    a_inc_sd  = sd(a_incongruent),
     t0_con_m  = mean(t0_congruent),
     t0_con_sd = sd(t0_congruent),
     t0_inc_m  = mean(t0_incongruent),
@@ -148,9 +152,6 @@ sim_msit_ddm <- read_DDM(task = "msit", model_version = "_mod1") |>
 
 # 3. Simulate DDM ground-truth --------------------------------------------
 
-ntrials_msit_con <- 6
-ntrials_msit_inc <- 17
-
 msit_ddm_gt <-
   tibble(
     id          = 1:2000,
@@ -158,14 +159,16 @@ msit_ddm_gt <-
     ntrials_inc = ntrials_msit_inc,
     v_con_gt    = rnorm(2000, mean = sim_msit_ddm$v_con_m,  sd = sim_msit_ddm$v_con_sd),
     v_inc_gt    = rnorm(2000, mean = sim_msit_ddm$v_inc_m,  sd = sim_msit_ddm$v_inc_sd),
-    a_gt        = rnorm(2000, mean = sim_msit_ddm$a_m,      sd = sim_msit_ddm$a_sd),
+    a_con_gt    = rnorm(2000, mean = sim_msit_ddm$a_con_m,  sd = sim_msit_ddm$a_con_sd),
+    a_inc_gt    = rnorm(2000, mean = sim_msit_ddm$a_inc_m,  sd = sim_msit_ddm$a_inc_sd),
     t0_con_gt   = rnorm(2000, mean = sim_msit_ddm$t0_con_m, sd = sim_msit_ddm$t0_con_sd),
     t0_inc_gt   = rnorm(2000, mean = sim_msit_ddm$t0_inc_m, sd = sim_msit_ddm$t0_inc_sd),
   ) |>
-  # Remove very small non-decision times because the cause issues with fitting the model (and are biologically not very plausible)
-  filter(a_gt > 0 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
+  # Remove very small non-decision times and boundary separations because they cause issues with fitting the model (and are biologically not very plausible)
+  filter(a_con_gt > 0.2 & a_inc_gt > 0.2 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
   mutate(id = 1:n()) |>
-  filter(id %in% sample(1:n(), size = 800))
+  filter(id %in% sample(1:n(), size = nobs))|>
+  mutate(id = 1:nobs)
 
 
 
@@ -175,17 +178,17 @@ future::plan(future::multisession, workers = ncores)
 
 msit_ddm_rt <- msit_ddm_gt %>%
   mutate(
-    responses = furrr::future_pmap(., function(id, ntrials_con, ntrials_inc, v_con_gt, v_inc_gt, a_gt, t0_con_gt, t0_inc_gt) {
+    responses = furrr::future_pmap(., function(id, ntrials_con, ntrials_inc, v_con_gt, v_inc_gt, a_con_gt, a_inc_gt, t0_con_gt, t0_inc_gt) {
 
       bind_rows(
         # Simulate RTs/accuracy for congruent condition
-        RWiener::rwiener(n=ntrials_con, alpha = a_gt, tau = t0_con_gt, beta = 0.5, delta = v_con_gt) |>
+        RWiener::rwiener(n=ntrials_con, alpha = a_con_gt, tau = t0_con_gt, beta = 0.5, delta = v_con_gt) |>
           as_tibble() |>
           mutate(
             con = 'congruent'
           ),
         # Simulate RTs/accuracy for incongruent condition
-        RWiener::rwiener(n = ntrials_inc, alpha = a_gt, tau = t0_inc_gt, beta = 0.5, delta = v_inc_gt) |>
+        RWiener::rwiener(n = ntrials_inc, alpha = a_inc_gt, tau = t0_inc_gt, beta = 0.5, delta = v_inc_gt) |>
           as_tibble() |>
           mutate(
             con = 'incongruent'
@@ -211,7 +214,7 @@ future::plan(future::sequential)
 model_msit <- "model {
   #likelihood function
   for (t in 1:nTrials) {
-    y[t] ~ dwiener(alpha[subject[t]],
+    y[t] ~ dwiener(alpha[condition[t], subject[t]],
                    tau[condition[t], subject[t]],
                    0.5,
                    delta[condition[t], subject[t]])
@@ -221,16 +224,18 @@ model_msit <- "model {
     for (c in 1:nCon) {
       tau[c, s]  ~ dnorm(muTau[c], precTau) T(.0001, 1)
       delta[c, s] ~ dnorm(muDelta[c] , precDelta) T(-10, 10)
+      alpha[c, s]  ~ dnorm(muAlpha[c], precAlpha) T(.05, 10)
     }
-    alpha[s]  ~ dnorm(muAlpha, precAlpha) T(.1, 5)
+
   }
 
   #priors
   for (c in 1:nCon){
     muTau[c] ~ dunif(.0001, 1)
     muDelta[c] ~ dunif(-10, 10)
+    muAlpha[c] ~ dunif(.05, 10)
   }
-  muAlpha~ dunif(.1, 5)
+
 
   precAlpha  ~ dgamma(.001, .001)
   precTau ~ dgamma(.001, .001)
@@ -242,7 +247,7 @@ model_msit <- "model {
 
 msit_ddm_rt_hddm <- msit_ddm_rt |>
   mutate(
-    condition = factor(condition),
+    condition = ifelse(condition == "congruent", 1, 2),
     subject = rep(1:nobs, each = ntrials_msit_con + ntrials_msit_inc))
 
 #Change error response times to negative for JAGS weiner module
@@ -261,8 +266,8 @@ nCondition_msit <- max(condition_msit)
 
 #Create a list of the data; this gets sent to JAGS
 datalist_msit <- list(y = y_msit, condition = condition_msit,
-                    subject = msit_ddm_rt_hddm$subject, nTrials = nTrials_msit,
-                    nSubjects = nSubjects_msit, nCon = nCondition_msit)
+                      subject = msit_ddm_rt_hddm$subject, nTrials = nTrials_msit,
+                      nSubjects = nSubjects_msit, nCon = nCondition_msit)
 
 ## JAGS Specifications ----
 
@@ -270,13 +275,13 @@ datalist_msit <- list(y = y_msit, condition = condition_msit,
 #This function choses initial values randomly
 initfunction <- function(chain){
   return(list(
-    muAlpha = runif(1, .2, 4.9),
+    muAlpha = runif(2, .06, 9.95),
     muTau = runif(2, .01, .05),
     muDelta = runif(2, -9.9, 9.9),
     precAlpha = runif(1, .01, 100),
     precTau = runif(1, .01, 100),
     precDelta = runif(1, .01, 100),
-    y = rep(NA, length(y_fm)),
+    y = rep(NA, length(y_msit)),
     .RNG.name = "lecuyer::RngStream",
     .RNG.seed = sample.int(1e10, 1, replace = F)))
 }
@@ -291,18 +296,18 @@ nChains = 3# Specify number of chains to run (one per processor)
 
 #Run the model in runjags
 ddm_msit_mod <- run.jags(method = "parallel",
-                       model = model_msit,
-                       monitor = parameters,
-                       data = datalist_msit,
-                       inits = initfunction,
-                       n.chains = nChains,
-                       adapt = 1000, #how long the samplers "tune"
-                       burnin = 2000, #how long of a burn in
-                       sample = 2000,
-                       thin = 1, #thin if high autocorrelation to avoid huge files
-                       modules = c("wiener", "lecuyer"),
-                       summarise = F,
-                       plots = F)
+                         model = model_msit,
+                         monitor = parameters,
+                         data = datalist_msit,
+                         inits = initfunction,
+                         n.chains = nChains,
+                         adapt = 1000, #how long the samplers "tune"
+                         burnin = 2000, #how long of a burn in
+                         sample = 2000,
+                         thin = 1, #thin if high autocorrelation to avoid huge files
+                         modules = c("wiener", "lecuyer"),
+                         summarise = F,
+                         plots = F)
 
 
 # 6. Compare estimated and ground-truth DDM parameters
@@ -342,9 +347,15 @@ ddm_msit_data <- mcmc_msit |>
     id = as.numeric(id),
     parameter = case_when(
       parameter == 'alpha' ~ 'a',
-      parameter == 'tau' ~ 't',
+      parameter == 'tau' ~ 't0',
       parameter == 'delta' ~ 'v'
-    )) |>
+    ),
+    condition = case_when(
+      condition == 1 ~ "con",
+      condition == 2 ~ "inc",
+      is.na(condition) ~ NA_character_
+    )
+  ) |>
   left_join(
     msit_ddm_gt |>
       select(id, ends_with('_gt')) |>

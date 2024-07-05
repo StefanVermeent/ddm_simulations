@@ -9,10 +9,10 @@ library(here)
 library(multitool)
 library(glue)
 
-nobs <- 800
+nobs <- 720
 ncores <- 4 # Number of cores used for parallel processing
 
-set.seed(4546546)
+set.seed(2865905)
 
 source('scripts/functions_DDM.R')
 source('scripts/DBDA2E-utilities.R')
@@ -28,8 +28,8 @@ source('scripts/DBDA2E-utilities.R')
 
 # Flanker settings
 
-ntrials_fm_con <- 6 # Nr of trials in congruent condition
-ntrials_fm_inc <- 17 # Nr of trials in incongruent condition
+ntrials_fm_con <- 29 # Nr of trials in congruent condition
+ntrials_fm_inc <- 16 # Nr of trials in incongruent condition
 
 ffm_tcon_m       <- 0.822
 ffm_tcon_sd      <- 0.160
@@ -131,18 +131,18 @@ write_DDM_files(data = sim_fm_ddm, path = "data/flanker", vars = c("rt", "correc
 
 fast_dm_settings(task = "flanker",
                  path = "data/flanker",
-                 model_version = "_mod2",
+                 model_version = "_mod1",
                  method = "ml",
                  depend = c("depends v condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 
 # Compute DDM parameters
-execute_fast_dm(task = "flanker", path = "data/flanker", model_version = "_mod2")
+execute_fast_dm(task = "flanker", path = "data/flanker", model_version = "_mod1")
 
 
 
 # Read DDM results
-sim_fm_ddm <- read_DDM(task = "flanker", path = "data/flanker", model_version = "_mod2") |>
+sim_fm_ddm <- read_DDM(task = "flanker", path = "data/flanker", model_version = "_mod1") |>
   summarise(
     v_con_m = mean(v_congruent),
     v_con_sd = sd(v_congruent),
@@ -174,7 +174,7 @@ fm_ddm_gt <-
   # Remove very small non-decision times because the cause issues with fitting the model (and are biologically not very plausible)
   filter(a_gt > 0 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
   mutate(id = 1:n()) |>
-  filter(id %in% sample(1:n(), size = 800)) |>
+  filter(id %in% sample(1:n(), size = nobs)) |>
   mutate(id = 1:nobs)
 
 
@@ -271,8 +271,8 @@ nCondition_fm <- max(condition_fm)
 
 #Create a list of the data; this gets sent to JAGS
 datalist_fm <- list(y = y_fm, condition = condition_fm,
-                 subject = fm_ddm_rt_hddm$subject, nTrials = nTrials_fm,
-                 nSubjects = nSubjects_fm, nCon = nCondition_fm)
+                    subject = fm_ddm_rt_hddm$subject, nTrials = nTrials_fm,
+                    nSubjects = nSubjects_fm, nCon = nCondition_fm)
 
 ## JAGS Specifications ----
 
@@ -301,18 +301,18 @@ nChains = 3# Specify number of chains to run (one per processor)
 
 #Run the model in runjags
 ddm_fm_mod <- run.jags(method = "parallel",
-                         model = model_fm,
-                         monitor = parameters,
-                         data = datalist_fm,
-                         inits = initfunction,
-                         n.chains = nChains,
-                         adapt = 1000, #how long the samplers "tune"
-                         burnin = 2000, #how long of a burn in
-                         sample = 2000,
-                         thin = 1, #thin if high autocorrelation to avoid huge files
-                         modules = c("wiener", "lecuyer"),
-                         summarise = F,
-                         plots = F)
+                       model = model_fm,
+                       monitor = parameters,
+                       data = datalist_fm,
+                       inits = initfunction,
+                       n.chains = nChains,
+                       adapt = 1000, #how long the samplers "tune"
+                       burnin = 2000, #how long of a burn in
+                       sample = 2000,
+                       thin = 1, #thin if high autocorrelation to avoid huge files
+                       modules = c("wiener", "lecuyer"),
+                       summarise = F,
+                       plots = F)
 
 
 # 6. Compare estimated and ground-truth DDM parameters
@@ -360,7 +360,7 @@ ddm_fm_data_mod1 <- mcmc_fm |>
       condition == 2 ~ "inc",
       is.na(condition) ~ NA_character_
     )
-    ) |>
+  ) |>
   left_join(
     fm_ddm_gt |>
       select(id, ends_with('_gt')) |>
