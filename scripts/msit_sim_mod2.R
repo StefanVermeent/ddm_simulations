@@ -122,7 +122,8 @@ write_DDM_files(data = sim_msit_ddm, path = "data/msit", vars = c("rt", "correct
 fast_dm_settings(task = "msit",
                  path = "data/msit",
                  model_version = "_mod2",
-                 method = "ml",
+                 method = "ks",
+                 st0 = "",
                  depend = c("depends v condition", "depends a condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 
@@ -154,18 +155,18 @@ sim_msit_ddm <- read_DDM(task = "msit", path = "data/msit", model_version = "_mo
 
 msit_ddm_gt <-
   tibble(
-    id          = 1:2000,
+    id          = 1:1000,
     ntrials_con = ntrials_msit_con,
     ntrials_inc = ntrials_msit_inc,
-    v_con_gt    = rnorm(2000, mean = sim_msit_ddm$v_con_m,  sd = sim_msit_ddm$v_con_sd),
-    v_inc_gt    = rnorm(2000, mean = sim_msit_ddm$v_inc_m,  sd = sim_msit_ddm$v_inc_sd),
-    a_con_gt    = rnorm(2000, mean = sim_msit_ddm$a_con_m,  sd = sim_msit_ddm$a_con_sd),
-    a_inc_gt    = rnorm(2000, mean = sim_msit_ddm$a_inc_m,  sd = sim_msit_ddm$a_inc_sd),
-    t0_con_gt   = rnorm(2000, mean = sim_msit_ddm$t0_con_m, sd = sim_msit_ddm$t0_con_sd),
-    t0_inc_gt   = rnorm(2000, mean = sim_msit_ddm$t0_inc_m, sd = sim_msit_ddm$t0_inc_sd),
+    v_con_gt    = rnorm(1000, mean = sim_msit_ddm$v_con_m,  sd = sim_msit_ddm$v_con_sd),
+    v_inc_gt    = rnorm(1000, mean = sim_msit_ddm$v_inc_m,  sd = sim_msit_ddm$v_inc_sd),
+    a_con_gt    = rnorm(1000, mean = sim_msit_ddm$a_con_m,  sd = sim_msit_ddm$a_con_sd),
+    a_inc_gt    = rnorm(1000, mean = sim_msit_ddm$a_inc_m,  sd = sim_msit_ddm$a_inc_sd),
+    t0_con_gt   = rnorm(1000, mean = sim_msit_ddm$t0_con_m, sd = sim_msit_ddm$t0_con_sd),
+    t0_inc_gt   = rnorm(1000, mean = sim_msit_ddm$t0_inc_m, sd = sim_msit_ddm$t0_inc_sd),
   ) |>
   # Remove very small non-decision times and boundary separations because they cause issues with fitting the model (and are biologically not very plausible)
-  filter(a_con_gt > 0.2 & a_inc_gt > 0.2 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
+  filter(a_con_gt > 0.2 & a_inc_gt > 0.2 & a_con_gt < 4 & a_inc_gt < 4 & t0_con_gt > 0.01 & t0_inc_gt > 0.01) |>
   mutate(id = 1:n()) |>
   filter(id %in% sample(1:n(), size = nobs))|>
   mutate(id = 1:nobs)
@@ -197,10 +198,11 @@ msit_ddm_rt <- msit_ddm_gt %>%
     }, .options = furrr::furrr_options(seed = TRUE))
   ) |>
   unnest(responses) |>
-  select(subject = id, choice = resp, RT = q, condition = con, ntrials_con, ntrials_inc) |>
+  select(subjects = id, choice = resp, rt = q, condition = con, ntrials_con, ntrials_inc) |>
   mutate(choice = ifelse(choice == 'upper', 1, 0))
 
 future::plan(future::sequential)
+
 
 
 # 5. Fit HDDM to simulated RTs/accuracies ------------------------------------
@@ -251,8 +253,8 @@ msit_ddm_rt_hddm <- msit_ddm_rt |>
     subject = rep(1:nobs, each = ntrials_msit_con + ntrials_msit_inc))
 
 #Change error response times to negative for JAGS weiner module
-y_msit <- round(ifelse(msit_ddm_rt_hddm$choice == 0, (msit_ddm_rt_hddm$RT*-1), msit_ddm_rt_hddm$RT),3)
-
+y_msit <- ifelse(msit_ddm_rt_hddm$choice == 0, (msit_ddm_rt_hddm$rt*-1), msit_ddm_rt_hddm$rt)
+yInit_msit <- rep(NA, length(y_msit))
 condition_msit <- as.numeric(msit_ddm_rt_hddm$condition)
 
 
@@ -321,7 +323,7 @@ mcmc_msit <- as.matrix(codaSamples_msit, chains = F) |>
 
 
 # Traces for convergence checks
-ddm_msit_traces <- mcmc_msit |>
+ddm_msit_traces_mod2 <- mcmc_msit |>
   select(starts_with("mu")) |>
   mutate(
     n = rep(1:2000, 3),
@@ -329,7 +331,7 @@ ddm_msit_traces <- mcmc_msit |>
 
 
 # Combine simulated and estimated DDM parameters
-ddm_msit_data <- mcmc_msit |>
+ddm_msit_data_mod2 <- mcmc_msit |>
   pivot_longer(everything(), names_to = "parameter", values_to = "estimated") |>
   group_by(parameter) |>
   summarise(estimated = mean(estimated, na.rm = T)) |>
@@ -337,7 +339,7 @@ ddm_msit_data <- mcmc_msit |>
   separate(col = parameter, into = c('parameter', 'id'), sep = "\\[") |>
   mutate(
     id = str_remove(id, pattern = "\\]$"),
-    id = ifelse(parameter %in% c('delta', 'tau'),
+    id = ifelse(parameter %in% c('delta', 'tau', 'alpha'),
                 str_replace_all(id, "([0-9]*),([0-9]*)", "\\2,\\1"),
                 id
     )
@@ -364,9 +366,9 @@ ddm_msit_data <- mcmc_msit |>
       separate(parameter, into = c('parameter', 'condition'), sep = "_")
   )
 
-ddm_msit_cor <- ddm_msit_data |>
-  group_by(parameter) |>
+ddm_msit_cor_mod2 <- ddm_msit_data_mod2 |>
+  group_by(parameter, condition) |>
   summarise(r = cor(estimated, groundtruth))
 
 
-save(ddm_msit_traces, ddm_msit_data, ddm_msit_cor, file = "analysis_objects/ddm_msit_results.RData")
+save(ddm_msit_traces_mod2, ddm_msit_data_mod2, ddm_msit_cor_mod2, file = "analysis_objects/ddm_msit_mod2_results.RData")

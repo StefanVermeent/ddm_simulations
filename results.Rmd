@@ -8,6 +8,7 @@ output:
 library(tidyverse)
 
 load('analysis_objects/ddm_msit_mod1_results.RData')
+load('analysis_objects/ddm_msit_mod2_results.RData')
 load('analysis_objects/ddm_fm_mod1_results.RData')
 load('analysis_objects/ddm_fm_mod2_results.RData')
 ```
@@ -34,7 +35,7 @@ Nevertheless, I also looked into model performance when all three parameters are
 Drift rate and non-decision time were always estimated separately for congruent and incongruent condition.
 
 For each simulation, I present two Figures.
-The first figure shows model convergence (i.e., whether the model was able to converge on a stable solution).
+The first figure shows model convergence (i.e., whether all Markov Chain Monte Carlo (MCMC) chains were able to converge on a stable solution).
 In the case of good model convergence, the plots should resemble a "thick, hairy catterpillar". 
 This is the case for all the simulations presented here.
 The second figure shows parameter recovery (i.e., how closely the estimated DDM parameters resemble the "true", underlying DDM parameters).
@@ -69,9 +70,7 @@ ddm_fm_traces_mod1 |>
 
 ```
 
-Parameter recovery was excellent for most parameters.
-Recovery of incongruent non-decision times was slightly lower, but still reasonably high.
-
+Parameter recovery was good for all parameters, showing that the DDM model is able to accurately recover the "true" simulated parameter values.
 
 ```{r echo = FALSE}
 ddm_fm_data_mod1 |> 
@@ -176,11 +175,61 @@ ddm_msit_traces_mod1 |>
 
 ```
 
-Just like with the Flanker, drift rates and boundary separation were recovered with high accuracy, while the recovery of the non-decision time (for congruent trials) was quite low.
+Just like with the Flanker, recovery was high for all parameters.
 
 
 ```{r echo = FALSE}
 ddm_msit_data_mod1 |> 
+  group_by(condition, parameter) |> 
+  mutate(
+    r = round(cor(estimated, groundtruth),2),
+    x = (max(estimated)-abs(min(estimated)))/2,
+    max_y = max(groundtruth)
+    ) |> 
+  mutate(
+    parameter = case_when(
+     parameter == 'a' ~ "Boundary sep",
+     parameter == 'v' ~ "Drift rate",
+     parameter == 't0' ~ "Non-dec time"
+    ),
+    condition = ifelse(is.na(condition), "", condition)
+  ) |> 
+  unite("parameter", c(parameter, condition), sep = " ") |> 
+  ungroup() |> 
+  ggplot(aes(estimated, groundtruth, color = parameter)) +
+  geom_point() +
+  geom_abline(aes(slope = 1, intercept = 0)) +
+  geom_text(aes(x = x, y = max_y, label = paste0("r = ", r)), color = 'black', check_overlap = TRUE) +
+  facet_wrap(~parameter, scales = 'free') +
+  guides(color = 'none') +
+  theme_classic()
+```
+
+## Simulation 2
+
+```{r echo = FALSE}
+ddm_msit_traces_mod2 |> 
+  rename(
+    `Boundary sep (con)` = `muAlpha[1]`,
+    `Boundary sep (inc)` = `muAlpha[2]`,
+    `Non-dec time (con)` = `muTau[1]`,
+    `Non-dec time (inc)` = `muTau[2]`,
+    `Drift rate (con)`   = `muDelta[1]`,
+    `Drift rate (inc)`   = `muDelta[2]`
+  ) |> 
+  pivot_longer(-c(n, chains), names_to = "parameter", values_to = "value") |> 
+  ggplot(aes(n, value, color = factor(chains), group = factor(chains))) + 
+  geom_line() +
+  facet_wrap(~parameter, scales = 'free') +
+  theme_classic()
+
+```
+
+Recovery of all DDM parameters remained high when boundary separation was estimated separately for each condition.
+
+
+```{r echo = FALSE}
+ddm_msit_data_mod2 |> 
   group_by(condition, parameter) |> 
   mutate(
     r = round(cor(estimated, groundtruth),2),

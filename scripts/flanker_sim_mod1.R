@@ -132,7 +132,8 @@ write_DDM_files(data = sim_fm_ddm, path = "data/flanker", vars = c("rt", "correc
 fast_dm_settings(task = "flanker",
                  path = "data/flanker",
                  model_version = "_mod1",
-                 method = "ml",
+                 method = "ks",
+                 st0 = "",
                  depend = c("depends v condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 

@@ -5,8 +5,6 @@
 library(tidyverse)
 library(runjags)
 library(RWiener)
-library(here)
-library(multitool)
 library(glue)
 
 nobs <- 720

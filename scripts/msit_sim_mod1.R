@@ -5,8 +5,6 @@
 library(tidyverse)
 library(runjags)
 library(RWiener)
-library(here)
-library(multitool)
 library(glue)
 
 nobs <- 720
@@ -122,7 +120,8 @@ write_DDM_files(data = sim_msit_ddm, path = "data/msit", vars = c("rt", "correct
 fast_dm_settings(task = "msit",
                  path = "data/msit",
                  model_version = "_mod1",
-                 method = "ml",
+                 method = "ks",
+                 st0 = "",
                  depend = c("depends v condition", "depends t0 condition"),
                  format = "TIME RESPONSE condition")
 
@@ -359,7 +358,7 @@ ddm_msit_data_mod1 <- mcmc_msit |>
       separate(parameter, into = c('parameter', 'condition'), sep = "_")
   )
 
-ddm_msit_cor_mod1 <- ddm_msit_data |>
+ddm_msit_cor_mod1 <- ddm_msit_data_mod1 |>
   group_by(parameter) |>
   summarise(r = cor(estimated, groundtruth))
 
